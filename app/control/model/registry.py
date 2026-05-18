@@ -36,6 +36,16 @@ MODELS: tuple[ModelSpec, ...] = (
     # Super+（basic 池不支持此模式）
     ModelSpec("grok-4.3-beta",                          ModeId.GROK_4_3, Tier.SUPER, Capability.CHAT,       True, "Grok 4.3 Beta"),
 
+    # === Console (Responses API) models =======================================
+    # Basic 账号通过 console.x.ai/v1/responses 使用高级模型.
+    # mode_id 统一用 FAST（仅用于池配额检查，上游 console.x.ai 直接接受 model name）
+    ModelSpec("grok-4",                                 ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4",               console_model=True, upstream_model_name="grok-4"),
+    ModelSpec("grok-4.3",                               ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.3",             console_model=True, upstream_model_name="grok-4.3"),
+    ModelSpec("grok-4.20",                              ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20",            console_model=True, upstream_model_name="grok-4.20"),
+    ModelSpec("grok-4.20-reasoning",                    ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Reasoning",  console_model=True, upstream_model_name="grok-4.20-reasoning"),
+    ModelSpec("grok-4.20-non-reasoning",                ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Non-Reasoning", console_model=True, upstream_model_name="grok-4.20-non-reasoning"),
+    ModelSpec("grok-4.20-multi-agent",                  ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Multi-Agent", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+
     # === Image ==============================================================
 
     # Basic fast

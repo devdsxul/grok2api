@@ -452,6 +452,7 @@ async def completions(
     messages: list[dict],
     stream: bool | None = None,
     emit_think: bool | None = None,
+    reasoning_effort_level: str | None = None,
     tools: list[dict] | None = None,
     tool_choice: Any = None,
     temperature: float = 0.8,
@@ -466,6 +467,59 @@ async def completions(
     """
     cfg = get_config()
     spec = resolve_model(model)
+
+    # ── Console model dispatch ─────────────────────────────────────────────────
+    if spec.is_console():
+        from .console import _console_completions as _cc
+        from app.products._account_selection import reserve_account as _ra, selection_max_retries as _smr
+
+        is_stream = stream if stream is not None else cfg.get_bool("features.stream", True)
+        if emit_think is None:
+            emit_think = cfg.get_bool("features.thinking", True)
+
+        from app.dataplane.account import _directory as _acct_dir
+        if _acct_dir is None:
+            raise RateLimitError("Account directory not initialised")
+
+        directory = _acct_dir
+        max_retries = _smr()
+        excluded: list[str] = []
+        token = ""
+        for attempt in range(max_retries + 1):
+            acct, selected_mode_id = await _ra(
+                directory, spec,
+                now_s_override=now_s(),
+                exclude_tokens=excluded or None,
+            )
+            if acct is None:
+                raise RateLimitError("No available accounts for this model tier")
+            token = acct.token
+            try:
+                result = await _cc(
+                    token=token,
+                    model=model,
+                    upstream_model=spec.upstream_model_name or spec.model_name,
+                    messages=messages,
+                    stream=is_stream,
+                    emit_think=emit_think,
+                    reasoning_effort_level=reasoning_effort_level,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    temperature=temperature,
+                    top_p=top_p,
+                    timeout_s=cfg.get_float("chat.timeout", 120.0),
+                )
+                return result
+            except UpstreamError as exc:
+                await directory.release(acct)
+                excluded.append(token)
+                if attempt >= max_retries:
+                    raise
+                logger.warning("console retry: attempt={}/{} status={} body={}", attempt + 1, max_retries + 1, exc.status, getattr(exc, "details", {}).get("body", "-")[:200])
+                continue
+            finally:
+                await directory.release(acct)
+
     is_stream = stream if stream is not None else cfg.get_bool("features.stream", True)
     if emit_think is None:
         emit_think = cfg.get_bool("features.thinking", True)

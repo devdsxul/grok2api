@@ -57,6 +57,11 @@ def build_session_kwargs(
             kwargs.setdefault("proxy", proxy_url)
         else:
             kwargs.setdefault("proxies", {"http": proxy_url, "https": proxy_url})
+            # Also set CURLOPT_PROXY via curl_options — curl_cffi impersonation mode
+            # can ignore the high-level 'proxies' kwarg, so we set the raw curl option.
+            opts = dict(kwargs.get("curl_options") or {})
+            opts.setdefault(CurlOpt.PROXY, proxy_url)
+            kwargs["curl_options"] = opts
 
     # curl SSL options for proxy.
     if _skip_proxy_ssl(proxy_url):

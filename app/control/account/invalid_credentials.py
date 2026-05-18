@@ -70,6 +70,8 @@ def feedback_kind_for_error(exc: BaseException | None) -> FeedbackKind:
     if is_invalid_credentials_error(exc):
         return FeedbackKind.UNAUTHORIZED
     status = getattr(exc, "status", 0)
+    if status == 402:
+        return FeedbackKind.RATE_LIMITED
     if status == 429:
         return FeedbackKind.RATE_LIMITED
     if status == 401:

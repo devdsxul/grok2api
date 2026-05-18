@@ -213,6 +213,7 @@ async def create(
     instructions: str | None,
     stream:       bool,
     emit_think:   bool,
+    reasoning_effort_level: str | None = None,
     temperature:  float,
     top_p:        float,
     tools:        list[dict] | None = None,
@@ -221,6 +222,57 @@ async def create(
 
     cfg     = get_config()
     spec    = resolve_model(model)
+
+    # ── Console model dispatch ─────────────────────────────────────────────────
+    if spec.is_console():
+        from .console import _console_responses_dispatch as _crd
+        from app.products._account_selection import reserve_account as _ra, selection_max_retries as _smr
+
+        from app.dataplane.account import _directory as _acct_dir
+        if _acct_dir is None:
+            raise RateLimitError("Account directory not initialised")
+        directory = _acct_dir
+
+        max_retries = _smr()
+        excluded: list[str] = []
+        token = ""
+        for attempt in range(max_retries + 1):
+            acct, selected_mode_id = await _ra(
+                directory, spec,
+                now_s_override=now_s(),
+                exclude_tokens=excluded or None,
+            )
+            if acct is None:
+                raise RateLimitError("No available accounts for this model tier")
+            token = acct.token
+            try:
+                result = await _crd(
+                    token=token,
+                    model=model,
+                    upstream_model=spec.upstream_model_name or spec.model_name,
+                    input_val=input_val,
+                    instructions=instructions,
+                    stream=stream,
+                    emit_think=emit_think,
+                    reasoning_effort_level=reasoning_effort_level,
+                    temperature=temperature,
+                    top_p=top_p,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    timeout_s=cfg.get_float("chat.timeout", 120.0),
+                )
+                return result
+            except UpstreamError as exc:
+                await directory.release(acct)
+                excluded.append(token)
+                if attempt >= max_retries:
+                    raise
+                logger.warning("console responses retry: attempt={}/{} status={}",
+                               attempt + 1, max_retries + 1, exc.status)
+                continue
+            finally:
+                await directory.release(acct)
+
     mode_id = int(spec.mode_id)   # cast once, reuse everywhere
 
     messages: list[dict] = []

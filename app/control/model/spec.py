@@ -29,8 +29,14 @@ class ModelSpec:
     enabled: bool
     public_name: str
     prefer_best: bool = False
+    console_model: bool = False          # route via console.x.ai/v1/responses
+    upstream_model_name: str | None = None  # upstream model ID (defaults to model_name)
 
     # --- convenience predicates ---
+
+    def is_console(self) -> bool:
+        """Return True if this model routes through console.x.ai /v1/responses."""
+        return self.console_model
 
     def is_chat(self) -> bool:
         return bool(self.capability & Capability.CHAT)

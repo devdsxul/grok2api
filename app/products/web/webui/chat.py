@@ -4,6 +4,7 @@ import time
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from starlette.requests import Request
 
 from app.control.model import registry as model_registry
 from app.platform.auth.middleware import verify_webui_key
@@ -24,7 +25,10 @@ def _capability_name(spec) -> str:
 
 
 @router.get("/models")
-async def list_webui_models():
+async def list_webui_models(request: Request):
+    from app.products.openai.router import _available_pools, _model_available_for_pools
+
+    pools = await _available_pools(request)
     models = [
         {
             "id": spec.model_name,
@@ -35,6 +39,7 @@ async def list_webui_models():
             "capability": _capability_name(spec),
         }
         for spec in model_registry.list_enabled()
+        if _model_available_for_pools(spec, pools)
     ]
     return JSONResponse({"object": "list", "data": models})
 

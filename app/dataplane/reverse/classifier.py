@@ -27,6 +27,9 @@ def classify_result(
     if status_code == 429:
         return ResultCategory.RATE_LIMITED
 
+    if status_code == 402:
+        return ResultCategory.RATE_LIMITED
+
     if status_code == 401:
         return ResultCategory.AUTH_FAILURE
 

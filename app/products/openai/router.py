@@ -305,6 +305,7 @@ async def chat_completions_endpoint(req: ChatCompletionRequest):
                 messages=messages,
                 stream=is_stream,
                 emit_think=emit_think,
+                reasoning_effort_level=req.reasoning_effort,
                 tools=req.tools,
                 tool_choice=req.tool_choice,
                 temperature=req.temperature or 0.8,
@@ -393,12 +394,14 @@ async def responses_endpoint(req: ResponsesCreateRequest):
         req.stream if req.stream is not None else cfg.get_bool("features.stream", True)
     )
 
-    # Map reasoning param → emit_think flag.
+    # Map reasoning param → emit_think flag + extract effort level.
     # reasoning=None → use config; reasoning.effort="none" → off; otherwise on.
+    _effort: str | None = None
     if req.reasoning is None:
         emit_think = cfg.get_bool("features.thinking", True)
-    elif isinstance(req.reasoning, dict) and req.reasoning.get("effort") == "none":
-        emit_think = False
+    elif isinstance(req.reasoning, dict):
+        _effort = req.reasoning.get("effort")
+        emit_think = _effort != "none"
     else:
         emit_think = True
 
@@ -410,6 +413,7 @@ async def responses_endpoint(req: ResponsesCreateRequest):
         instructions=req.instructions,
         stream=is_stream,
         emit_think=emit_think,
+        reasoning_effort_level=_effort,
         temperature=req.temperature or 0.8,
         top_p=req.top_p or 0.95,
         tools=req.tools or None,
