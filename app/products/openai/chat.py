@@ -483,8 +483,104 @@ async def completions(
 
         directory = _acct_dir
         max_retries = _smr()
+        timeout_s = cfg.get_float("chat.timeout", 120.0)
+        retry_codes = _configured_retry_codes(cfg)
+        upstream = spec.upstream_model_name or spec.model_name
+        effort = reasoning_effort_level
+        # Extract reasoning effort from model name suffix if not explicit.
+        # e.g. grok-4.3-low → low, grok-4.3-medium → medium
+        if effort is None:
+            for suffix in ("-low", "-medium", "-high"):
+                if model.endswith(suffix):
+                    effort = suffix[1:]
+                    break
+
+        if is_stream:
+
+            async def _run_console_stream() -> AsyncGenerator[str, None]:
+                excluded: list[str] = []
+                for attempt in range(max_retries + 1):
+                    acct, selected_mode_id = await _ra(
+                        directory, spec,
+                        now_s_override=now_s(),
+                        exclude_tokens=excluded or None,
+                    )
+                    if acct is None:
+                        raise RateLimitError("No available accounts for this model tier")
+
+                    token = acct.token
+                    success = False
+                    retry = False
+                    fail_exc: BaseException | None = None
+                    try:
+                        result = await _cc(
+                            token=token,
+                            model=model,
+                            upstream_model=upstream,
+                            messages=messages,
+                            stream=True,
+                            emit_think=emit_think,
+                            reasoning_effort_level=effort,
+                            tools=tools,
+                            tool_choice=tool_choice,
+                            temperature=temperature,
+                            top_p=top_p,
+                            timeout_s=timeout_s,
+                        )
+                        async for chunk in result:
+                            yield chunk
+                        success = True
+
+                    except UpstreamError as exc:
+                        fail_exc = exc
+                        if _should_retry_upstream(exc, retry_codes) and attempt < max_retries:
+                            retry = True
+                            logger.warning(
+                                "console stream retry scheduled: attempt={}/{} status={} token={}... body={}",
+                                attempt + 1,
+                                max_retries,
+                                exc.status,
+                                token[:8],
+                                _upstream_body_excerpt(exc),
+                            )
+                        else:
+                            logger.warning(
+                                "console stream upstream failed: attempt={}/{} model={} status={} body={}",
+                                attempt + 1,
+                                max_retries + 1,
+                                model,
+                                exc.status,
+                                _upstream_body_excerpt(exc),
+                            )
+                            raise
+                    finally:
+                        await directory.release(acct)
+                        kind = (
+                            FeedbackKind.SUCCESS
+                            if success
+                            else _feedback_kind(fail_exc)
+                            if fail_exc
+                            else FeedbackKind.SERVER_ERROR
+                        )
+                        await directory.feedback(
+                            token, kind, selected_mode_id, now_s_val=now_s()
+                        )
+                        if success:
+                            asyncio.create_task(
+                                _quota_sync(token, selected_mode_id)
+                            ).add_done_callback(_log_task_exception)
+                        else:
+                            asyncio.create_task(
+                                _fail_sync(token, selected_mode_id, fail_exc)
+                            ).add_done_callback(_log_task_exception)
+
+                    if success or not retry:
+                        return
+                    excluded.append(token)
+
+            return _run_console_stream()
+
         excluded: list[str] = []
-        token = ""
         for attempt in range(max_retries + 1):
             acct, selected_mode_id = await _ra(
                 directory, spec,
@@ -494,40 +590,56 @@ async def completions(
             if acct is None:
                 raise RateLimitError("No available accounts for this model tier")
             token = acct.token
+            success = False
+            fail_exc: BaseException | None = None
             try:
-                upstream = spec.upstream_model_name or spec.model_name
-                effort = reasoning_effort_level
-                # Extract reasoning effort from model name suffix if not explicit
-                # e.g. grok-4.3-low → low, grok-4.3-medium → medium
-                if effort is None:
-                    for suffix in ("-low", "-medium", "-high"):
-                        if model.endswith(suffix):
-                            effort = suffix[1:]
-                            break
                 result = await _cc(
                     token=token,
                     model=model,
                     upstream_model=upstream,
                     messages=messages,
-                    stream=is_stream,
+                    stream=False,
                     emit_think=emit_think,
                     reasoning_effort_level=effort,
                     tools=tools,
                     tool_choice=tool_choice,
                     temperature=temperature,
                     top_p=top_p,
-                    timeout_s=cfg.get_float("chat.timeout", 120.0),
+                    timeout_s=timeout_s,
                 )
+                success = True
                 return result
             except UpstreamError as exc:
-                await directory.release(acct)
+                fail_exc = exc
                 excluded.append(token)
-                if attempt >= max_retries:
+                if not (_should_retry_upstream(exc, retry_codes) and attempt < max_retries):
                     raise
-                logger.warning("console retry: attempt={}/{} status={} body={}", attempt + 1, max_retries + 1, exc.status, getattr(exc, "details", {}).get("body", "-")[:200])
-                continue
+                logger.warning(
+                    "console retry scheduled: attempt={}/{} status={} token={}... body={}",
+                    attempt + 1,
+                    max_retries,
+                    exc.status,
+                    token[:8],
+                    _upstream_body_excerpt(exc),
+                )
             finally:
                 await directory.release(acct)
+                kind = (
+                    FeedbackKind.SUCCESS
+                    if success
+                    else _feedback_kind(fail_exc)
+                    if fail_exc
+                    else FeedbackKind.SERVER_ERROR
+                )
+                await directory.feedback(token, kind, selected_mode_id, now_s_val=now_s())
+                if success:
+                    asyncio.create_task(
+                        _quota_sync(token, selected_mode_id)
+                    ).add_done_callback(_log_task_exception)
+                else:
+                    asyncio.create_task(
+                        _fail_sync(token, selected_mode_id, fail_exc)
+                    ).add_done_callback(_log_task_exception)
 
     is_stream = stream if stream is not None else cfg.get_bool("features.stream", True)
     if emit_think is None:

@@ -100,6 +100,11 @@ def _console_function_calls_from_output(output: list[dict]) -> list[ParsedToolCa
     return calls
 
 
+def _console_stream_unavailable(content: str) -> bool:
+    """Return whether an in-band Console stream error should switch account."""
+    return "service temporarily unavailable" in (content or "").lower()
+
+
 # ---------------------------------------------------------------------------
 # Low-level: raw SSE stream from console.x.ai
 # ---------------------------------------------------------------------------
@@ -233,13 +238,19 @@ async def _console_stream(
 
 
 
-def _drop_multi_agent_client_tools(
+def _drop_console_client_function_tools(
     upstream_model: str,
     tools: list[dict] | None,
     tool_choice: Any,
 ) -> tuple[list[dict] | None, Any]:
-    """Drop client-side function tools rejected by multi-agent console models."""
-    if "multi-agent" not in upstream_model or not tools:
+    """Drop client-side function tools for Console-backed chat models.
+
+    LobeChat and similar clients often attach local function tools. Console
+    may choose one and return only a function_call item, which many generic
+    OpenAI-compatible clients display as an empty assistant reply. Preserve
+    server-side web_search, but do not forward client functions to Console.
+    """
+    if not tools:
         return tools, tool_choice
 
     kept: list[dict] = []
@@ -253,12 +264,17 @@ def _drop_multi_agent_client_tools(
     if not dropped:
         return tools, tool_choice
 
+    if isinstance(tool_choice, dict) and tool_choice.get("type") == "function":
+        tool_choice = None
+    elif tool_choice == "required":
+        tool_choice = "auto"
+
     logger.warning(
-        "console multi-agent dropped unsupported client function tools: model={} dropped={}",
+        "console dropped client function tools: model={} dropped={}",
         upstream_model,
         dropped,
     )
-    return kept, None
+    return kept, tool_choice
 
 # ---------------------------------------------------------------------------
 # Chat Completions → Console bridge
@@ -285,11 +301,12 @@ async def _console_completions(
     """
     instructions = extract_instructions(messages)
     input_data = messages_to_console_input(messages)
-    # Convert tools to console format (flatten nested function), then drop
-    # function tools for multi-agent models because console rejects them.
+    # Convert tools to console format, then drop client-side function tools.
+    # Console-backed Chat Completions should return assistant text directly
+    # for generic OpenAI-compatible clients; web_search remains server-side.
     converted_tools = convert_openai_tools_to_console(tools)
     converted_tool_choice = convert_openai_tool_choice(tool_choice)
-    converted_tools, converted_tool_choice = _drop_multi_agent_client_tools(
+    converted_tools, converted_tool_choice = _drop_console_client_function_tools(
         upstream_model, converted_tools, converted_tool_choice)
     resolved_tools = inject_web_search_tool(converted_tools)
 
@@ -560,6 +577,12 @@ async def _console_stream_completions(
 
             elif ev.kind == "error":
                 logger.warning("console stream error: {}", ev.content)
+                if _console_stream_unavailable(ev.content):
+                    raise UpstreamError(
+                        ev.content or "Console stream temporarily unavailable",
+                        status=503,
+                        body=ev.content,
+                    )
                 finished = True
 
         # Final chunk
@@ -651,11 +674,11 @@ async def _console_responses_dispatch(
     else:
         input_data = input_val
 
-    # Convert tools to console format, then drop function tools for
-    # multi-agent models because console rejects client-side tools.
+    # Convert tools to console format, then drop client-side function tools.
+    # Responses API proxy keeps web_search, but avoids client-tool loops.
     converted_tools = convert_openai_tools_to_console(tools)
     converted_tool_choice = convert_openai_tool_choice(tool_choice)
-    converted_tools, converted_tool_choice = _drop_multi_agent_client_tools(
+    converted_tools, converted_tool_choice = _drop_console_client_function_tools(
         upstream_model, converted_tools, converted_tool_choice)
     resolved_tools = inject_web_search_tool(converted_tools)
 
@@ -757,6 +780,12 @@ async def _console_responses_stream(
             ev = adapter.feed(event_type, data)
             if ev and ev.kind == "error":
                 logger.warning("console responses stream error: {}", ev.content)
+                if _console_stream_unavailable(ev.content):
+                    raise UpstreamError(
+                        ev.content or "Console stream temporarily unavailable",
+                        status=503,
+                        body=ev.content,
+                    )
 
             # Forward all events as-is, just inject search_sources on completed
             if dtype == "response.completed":
