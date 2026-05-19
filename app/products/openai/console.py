@@ -131,7 +131,7 @@ async def _console_post_json(
             except Exception:
                 body = ""
             raise UpstreamError(
-                f"Console upstream returned {response.status_code}",
+                f"Console upstream returned {response.status_code}: {body}",
                 status=response.status_code,
                 body=body,
             )
@@ -178,7 +178,7 @@ async def _console_stream(
             except Exception:
                 body = ""
             raise UpstreamError(
-                f"Console upstream returned {response.status_code}",
+                f"Console upstream returned {response.status_code}: {body}",
                 status=response.status_code,
                 body=body,
             )
