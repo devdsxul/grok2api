@@ -271,6 +271,7 @@ async def _console_completions(
     full_text = ""
     full_think = ""
     sources: list[dict] = []
+    _seen_urls: set[str] = set()
     for item in resp.get("output", []):
         if item.get("type") == "reasoning":
             for summary in item.get("summary", []):
@@ -281,7 +282,8 @@ async def _console_completions(
                     full_text += part.get("text", "")
                 for ann in part.get("annotations", []):
                     url = ann.get("url_citation", {}).get("url", "") or ann.get("url", "")
-                    if url:
+                    if url and url not in _seen_urls:
+                        _seen_urls.add(url)
                         src = {"url": url, "type": "web"}
                         title = ann.get("url_citation", {}).get("title", "") or ann.get("title", "")
                         if title:
@@ -537,6 +539,12 @@ async def _console_responses_stream(
             if dtype == "response.output_item.done":
                 output_count += 1
 
+            # Feed through adapter FIRST to accumulate search_sources
+            # (multi-agent annotations only available inside feed() on completed)
+            ev = adapter.feed(event_type, data)
+            if ev and ev.kind == "error":
+                logger.warning("console responses stream error: {}", ev.content)
+
             # Forward all events as-is, just inject search_sources on completed
             if dtype == "response.completed":
                 sources = adapter.search_sources_list()
@@ -546,15 +554,9 @@ async def _console_responses_stream(
                     for item in output_items:
                         if item.get("type") == "message":
                             item["search_sources"] = sources
-
                 yield format_sse(dtype, data)
             else:
                 yield format_sse(dtype, data)
-
-            # Feed through adapter to accumulate search_sources
-            ev = adapter.feed(event_type, data)
-            if ev and ev.kind == "error":
-                logger.warning("console responses stream error: {}", ev.content)
 
     except UpstreamError:
         raise
