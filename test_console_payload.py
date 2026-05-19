@@ -182,7 +182,7 @@ try:
         url,
         data=json.dumps(payload),
         headers=headers,
-        impersonate="chrome148",
+        impersonate="chrome120",
         timeout=30,
         **session_kwargs,
     )
