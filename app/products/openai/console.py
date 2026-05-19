@@ -394,16 +394,14 @@ async def _console_stream_completions(
 
         # Final chunk
         full_text = "".join(text_buf)
-        sources = adapter.search_sources_list()
-        ann = adapter.annotations_list()
+        # Keep Chat Completions streaming chunks strict for clients such as
+        # LobeChat. Citation URLs are already streamed as text by console.x.ai;
+        # do not add non-standard root search_sources or delta.annotations.
         final_chunk = make_stream_chunk(
             response_id, model, "",
             is_final=True,
             finish_reason="stop",
-            annotations=ann if ann else None,
         )
-        if sources:
-            final_chunk["search_sources"] = sources
         pt = estimate_prompt_tokens(str(messages))
         ct = estimate_tokens(full_text)
         rt = estimate_tokens("".join(think_buf)) if think_buf else 0
