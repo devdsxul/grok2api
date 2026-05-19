@@ -25,37 +25,36 @@ def build_console_payload(
     tools: list[dict] | None = None,
     tool_choice: Any = None,
     stream: bool = True,
-    temperature: float = 0.7,
-    top_p: float = 0.95,
-    max_output_tokens: int = 1000000,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_output_tokens: int | None = None,
     reasoning: dict | None = None,
-    include: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Build a JSON payload for POST console.x.ai/v1/responses."""
+    """Build a JSON payload for POST console.x.ai/v1/responses.
+
+    Only sends fields that are non-None to avoid 422 from unknown/out-of-range values.
+    """
     payload: dict[str, Any] = {
         "model": model,
         "input": input_data,
-        "max_output_tokens": max_output_tokens,
-        "temperature": temperature,
-        "top_p": top_p,
-        "store": False,
-        "stream": stream,
     }
 
+    if stream:
+        payload["stream"] = True
     if instructions:
         payload["instructions"] = instructions
-
-    if tools:
-        payload["tools"] = tools
-
-    if tool_choice is not None:
-        payload["tool_choice"] = tool_choice
-
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if top_p is not None:
+        payload["top_p"] = top_p
+    if max_output_tokens is not None:
+        payload["max_output_tokens"] = max_output_tokens
     if reasoning:
         payload["reasoning"] = reasoning
-
-    if include:
-        payload["include"] = include
+    if tools:
+        payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
 
     logger.debug(
         "console payload built: model={} input_len={} stream={}",

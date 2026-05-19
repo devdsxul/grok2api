@@ -234,12 +234,10 @@ async def _console_completions(
 
     # Only send reasoning.effort when explicitly provided by the caller.
     # Some console models (grok-4.20-reasoning etc.) reject the parameter.
+    # NOTE: do NOT send {"effort": "none"} — the API rejects it as invalid.
     reasoning: dict | None = None
     if reasoning_effort_level in ("low", "medium", "high"):
         reasoning = {"effort": reasoning_effort_level}
-    # When emit_think is false and no effort is given, force reasoning off
-    elif emit_think is False:
-        reasoning = {"effort": "none"}
 
     payload = build_console_payload(
         model=upstream_model,
@@ -250,7 +248,6 @@ async def _console_completions(
         stream=stream if stream is not None else True,
         temperature=temperature,
         top_p=top_p,
-        max_output_tokens=1000000,
         reasoning=reasoning,
     )
 
@@ -460,7 +457,6 @@ async def _console_responses_dispatch(
         stream=stream,
         temperature=temperature,
         top_p=top_p,
-        max_output_tokens=1000000,
         reasoning=reasoning,
     )
 
