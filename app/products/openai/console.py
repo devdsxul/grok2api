@@ -73,7 +73,11 @@ def _log_task_exception(task: asyncio.Task) -> None:
 # ---------------------------------------------------------------------------
 
 def _inject_env_proxy(session_kwargs: dict) -> dict:
-    """Inject HTTPS_PROXY env proxy into session kwargs if no proxy set."""
+    """Inject CONSOLE_PROXY_URL into session kwargs if no proxy set.
+
+    Uses a dedicated env var so it doesn't interfere with tiktoken/requests
+    which would otherwise pick up a global HTTPS_PROXY.
+    """
     # Check if any proxy is already configured
     existing = (
         session_kwargs.get("proxy") or
@@ -83,7 +87,7 @@ def _inject_env_proxy(session_kwargs: dict) -> dict:
     if existing:
         return session_kwargs
 
-    proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    proxy_url = os.environ.get("CONSOLE_PROXY_URL")
     if not proxy_url:
         return session_kwargs
 
@@ -222,13 +226,16 @@ async def _console_completions(
     instructions = extract_instructions(messages)
     input_data = messages_to_console_input(messages)
     resolved_tools = auto_inject_web_search(tools)
-    reasoning_effort = _resolve_reasoning_effort(emit_think, reasoning_effort_level)
     include = ["reasoning.encrypted_content"] if emit_think else None
 
-    # Map effective reasoning
+    # Only send reasoning.effort when explicitly provided by the caller.
+    # Some console models (grok-4.20-reasoning etc.) reject the parameter.
     reasoning: dict | None = None
-    if reasoning_effort:
-        reasoning = {"effort": reasoning_effort}
+    if reasoning_effort_level in ("low", "medium", "high"):
+        reasoning = {"effort": reasoning_effort_level}
+    # When emit_think is false and no effort is given, force reasoning off
+    elif emit_think is False:
+        reasoning = {"effort": "none"}
 
     payload = build_console_payload(
         model=upstream_model,
@@ -431,9 +438,10 @@ async def _console_responses_dispatch(
     resolved_tools = auto_inject_web_search(tools)
 
     reasoning: dict | None = None
-    if emit_think:
-        _effort = reasoning_effort_level if reasoning_effort_level in ("low", "medium", "high") else "low"
-        reasoning = {"effort": _effort}
+    if reasoning_effort_level in ("low", "medium", "high"):
+        reasoning = {"effort": reasoning_effort_level}
+        include = ["reasoning.encrypted_content"]
+    elif emit_think:
         include = ["reasoning.encrypted_content"]
     else:
         include = None

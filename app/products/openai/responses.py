@@ -246,15 +246,24 @@ async def create(
                 raise RateLimitError("No available accounts for this model tier")
             token = acct.token
             try:
+                # Map reasoning effort to model name for grok-4.3:
+                #   grok-4.3 + low   → grok-4.3-low
+                #   grok-4.3 + medium → grok-4.3-medium
+                #   grok-4.3 + high  → grok-4.3-high
+                upstream = spec.upstream_model_name or spec.model_name
+                effort = reasoning_effort_level
+                if spec.model_name == "grok-4.3" and effort in ("low", "medium", "high"):
+                    upstream = f"grok-4.3-{effort}"
+                    effort = None  # encoded in model name
                 result = await _crd(
                     token=token,
                     model=model,
-                    upstream_model=spec.upstream_model_name or spec.model_name,
+                    upstream_model=upstream,
                     input_val=input_val,
                     instructions=instructions,
                     stream=stream,
                     emit_think=emit_think,
-                    reasoning_effort_level=reasoning_effort_level,
+                    reasoning_effort_level=effort,
                     temperature=temperature,
                     top_p=top_p,
                     tools=tools,
