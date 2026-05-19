@@ -417,7 +417,7 @@ def convert_openai_tools_to_console(tools: list[dict] | None) -> list[dict]:
 
     OpenAI Chat:  {"type": "function", "function": {"name", "description", "parameters"}}
     Console API:  {"type": "function", "name", "description", "parameters"}
-    Non-function tools (web_search etc.) pass through unchanged.
+    OpenAI web_search_preview is normalized to console web_search.
     """
     if not tools:
         return []
@@ -425,7 +425,13 @@ def convert_openai_tools_to_console(tools: list[dict] | None) -> list[dict]:
     for t in tools:
         if not isinstance(t, dict):
             continue
-        if t.get("type") != "function":
+        tool_type = t.get("type")
+        if tool_type in {"web_search_preview", "web_search_preview_2025_03_11"}:
+            normalized = dict(t)
+            normalized["type"] = "web_search"
+            out.append(normalized)
+            continue
+        if tool_type != "function":
             out.append(dict(t))
             continue
         fn = t.get("function") if isinstance(t.get("function"), dict) else None

@@ -202,6 +202,34 @@ async def _console_stream(
             raise _transport_upstream_error(exc, context="Console stream read failed") from exc
 
 
+
+def _drop_multi_agent_client_tools(
+    upstream_model: str,
+    tools: list[dict] | None,
+    tool_choice: Any,
+) -> tuple[list[dict] | None, Any]:
+    """Drop client-side function tools rejected by multi-agent console models."""
+    if "multi-agent" not in upstream_model or not tools:
+        return tools, tool_choice
+
+    kept: list[dict] = []
+    dropped = 0
+    for tool in tools:
+        if isinstance(tool, dict) and tool.get("type") == "function":
+            dropped += 1
+            continue
+        kept.append(tool)
+
+    if not dropped:
+        return tools, tool_choice
+
+    logger.warning(
+        "console multi-agent dropped unsupported client function tools: model={} dropped={}",
+        upstream_model,
+        dropped,
+    )
+    return kept, None
+
 # ---------------------------------------------------------------------------
 # Chat Completions → Console bridge
 # ---------------------------------------------------------------------------
@@ -227,10 +255,13 @@ async def _console_completions(
     """
     instructions = extract_instructions(messages)
     input_data = messages_to_console_input(messages)
-    # Convert tools to console format (flatten nested function) and inject web_search
+    # Convert tools to console format (flatten nested function), then drop
+    # function tools for multi-agent models because console rejects them.
     converted_tools = convert_openai_tools_to_console(tools)
-    resolved_tools = inject_web_search_tool(converted_tools)
     converted_tool_choice = convert_openai_tool_choice(tool_choice)
+    converted_tools, converted_tool_choice = _drop_multi_agent_client_tools(
+        upstream_model, converted_tools, converted_tool_choice)
+    resolved_tools = inject_web_search_tool(converted_tools)
 
     # Only send reasoning.effort when explicitly provided by the caller.
     # Some console models (grok-4.20-reasoning etc.) reject the parameter.
@@ -437,10 +468,13 @@ async def _console_responses_dispatch(
     else:
         input_data = input_val
 
-    # Convert tools to console format and inject web_search
+    # Convert tools to console format, then drop function tools for
+    # multi-agent models because console rejects client-side tools.
     converted_tools = convert_openai_tools_to_console(tools)
-    resolved_tools = inject_web_search_tool(converted_tools)
     converted_tool_choice = convert_openai_tool_choice(tool_choice)
+    converted_tools, converted_tool_choice = _drop_multi_agent_client_tools(
+        upstream_model, converted_tools, converted_tool_choice)
+    resolved_tools = inject_web_search_tool(converted_tools)
 
     reasoning: dict | None = None
     if reasoning_effort_level in ("low", "medium", "high"):
