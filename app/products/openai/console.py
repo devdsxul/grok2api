@@ -18,6 +18,7 @@ from app.platform.errors import UpstreamError
 from app.platform.tokens import (
     estimate_prompt_tokens,
     estimate_tokens,
+    estimate_tool_call_tokens,
 )
 from app.dataplane.proxy.adapters.session import (
     ResettableSession,
@@ -41,12 +42,16 @@ from ._format import (
     make_stream_chunk,
     make_thinking_chunk,
     make_chat_response,
+    make_tool_call_chunk,
+    make_tool_call_done_chunk,
+    make_tool_call_response,
     build_usage,
     make_resp_id,
     make_resp_object,
     build_resp_usage,
     format_sse,
 )
+from app.dataplane.reverse.protocol.tool_parser import ParsedToolCall
 
 
 def _upstream_body_excerpt(exc: UpstreamError, *, limit: int = 240) -> str:
@@ -68,6 +73,31 @@ def _log_task_exception(task: asyncio.Task) -> None:
     exc = task.exception() if not task.cancelled() else None
     if exc:
         logger.warning("bg task failed: task={} error={}", task.get_name(), exc)
+
+
+def _console_function_calls_from_output(output: list[dict]) -> list[ParsedToolCall]:
+    """Convert console Responses API function_call items to Chat tool_calls."""
+    calls: list[ParsedToolCall] = []
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "function_call":
+            continue
+        name = str(item.get("name") or "")
+        if not name:
+            continue
+        call_id = str(item.get("call_id") or item.get("id") or "")
+        if not call_id:
+            call_id = make_resp_id("call")
+        arguments = item.get("arguments") or "{}"
+        if not isinstance(arguments, str):
+            arguments = orjson.dumps(arguments).decode()
+        calls.append(
+            ParsedToolCall(
+                call_id=call_id,
+                name=name,
+                arguments=arguments,
+            )
+        )
+    return calls
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +347,20 @@ async def _console_completions(
                         if title:
                             src["title"] = title
                         sources.append(src)
+    tool_calls = _console_function_calls_from_output(resp.get("output", []))
+    if tool_calls:
+        pt = estimate_prompt_tokens(str(messages))
+        usage = build_usage(
+            pt,
+            estimate_tool_call_tokens(tool_calls),
+            reasoning_tokens=estimate_tokens(full_think) if full_think else 0,
+        )
+        return make_tool_call_response(
+            model=model,
+            tool_calls=tool_calls,
+            prompt_content=messages,
+            usage=usage,
+        )
     logger.debug("cc non-stream result: text_len={} think_len={} sources={}", len(full_text), len(full_think), len(sources))
     full_think = full_think or None
     sources = sources or None
@@ -351,6 +395,10 @@ async def _console_stream_completions(
     thinking_started = False
     reasoning_started = False
     finished = False
+    tool_call_meta: dict[str, dict[str, Any]] = {}
+    tool_call_index: dict[str, int] = {}
+    tool_call_args: dict[str, list[str]] = {}
+    tool_calls_started = False
 
     try:
         async for line in _console_stream(token, payload, timeout_s):
@@ -365,6 +413,128 @@ async def _console_stream_completions(
             if event_type == "event":
                 adapter._last_event = data
                 continue
+
+            if event_type == "data" and isinstance(data, dict):
+                dtype = data.get("type", "")
+
+                if dtype == "response.output_item.added":
+                    item = data.get("item", {})
+                    if isinstance(item, dict) and item.get("type") == "function_call":
+                        item_id = str(item.get("id") or data.get("item_id") or "")
+                        if not item_id:
+                            item_id = make_resp_id("fc")
+                        call_id = str(item.get("call_id") or item_id)
+                        index = tool_call_index.setdefault(item_id, len(tool_call_index))
+                        tool_call_meta[item_id] = {
+                            "index": index,
+                            "call_id": call_id,
+                            "name": str(item.get("name") or ""),
+                        }
+                        tool_call_args.setdefault(item_id, [])
+                        tool_calls_started = True
+                        chunk = make_tool_call_chunk(
+                            response_id,
+                            model,
+                            index,
+                            call_id,
+                            str(item.get("name") or ""),
+                            str(item.get("arguments") or ""),
+                            is_first=True,
+                        )
+                        yield f"data: {orjson.dumps(chunk).decode()}\n\n"
+                        continue
+
+                if dtype == "response.function_call_arguments.delta":
+                    item_id = str(data.get("item_id") or "")
+                    if not item_id:
+                        item_id = make_resp_id("fc")
+                    meta = tool_call_meta.get(item_id)
+                    if meta is None:
+                        index = tool_call_index.setdefault(item_id, len(tool_call_index))
+                        meta = {
+                            "index": index,
+                            "call_id": str(data.get("call_id") or item_id),
+                            "name": str(data.get("name") or ""),
+                        }
+                        tool_call_meta[item_id] = meta
+                        tool_call_args.setdefault(item_id, [])
+                        first = make_tool_call_chunk(
+                            response_id,
+                            model,
+                            index,
+                            meta["call_id"],
+                            meta["name"],
+                            "",
+                            is_first=True,
+                        )
+                        yield f"data: {orjson.dumps(first).decode()}\n\n"
+                    delta = data.get("delta") or ""
+                    if not isinstance(delta, str):
+                        delta = str(delta)
+                    tool_call_args.setdefault(item_id, []).append(delta)
+                    tool_calls_started = True
+                    if delta:
+                        chunk = make_tool_call_chunk(
+                            response_id,
+                            model,
+                            int(meta["index"]),
+                            str(meta["call_id"]),
+                            str(meta["name"]),
+                            delta,
+                            is_first=False,
+                        )
+                        yield f"data: {orjson.dumps(chunk).decode()}\n\n"
+                    continue
+
+                if dtype in ("response.function_call_arguments.done", "response.output_item.done"):
+                    item = data.get("item", {}) if dtype == "response.output_item.done" else {}
+                    if dtype == "response.output_item.done" and (
+                        not isinstance(item, dict) or item.get("type") != "function_call"
+                    ):
+                        pass
+                    else:
+                        item_id = str(data.get("item_id") or (item.get("id") if isinstance(item, dict) else "") or "")
+                        if not item_id:
+                            item_id = make_resp_id("fc")
+                        meta = tool_call_meta.get(item_id)
+                        if meta is None:
+                            index = tool_call_index.setdefault(item_id, len(tool_call_index))
+                            meta = {
+                                "index": index,
+                                "call_id": str((item.get("call_id") if isinstance(item, dict) else "") or item_id),
+                                "name": str((item.get("name") if isinstance(item, dict) else "") or data.get("name") or ""),
+                            }
+                            tool_call_meta[item_id] = meta
+                            tool_call_args.setdefault(item_id, [])
+                            first = make_tool_call_chunk(
+                                response_id,
+                                model,
+                                index,
+                                meta["call_id"],
+                                meta["name"],
+                                "",
+                                is_first=True,
+                            )
+                            yield f"data: {orjson.dumps(first).decode()}\n\n"
+                        arguments = data.get("arguments")
+                        if arguments is None and isinstance(item, dict):
+                            arguments = item.get("arguments")
+                        if arguments and not tool_call_args.get(item_id):
+                            if not isinstance(arguments, str):
+                                arguments = orjson.dumps(arguments).decode()
+                            tool_call_args.setdefault(item_id, []).append(arguments)
+                            chunk = make_tool_call_chunk(
+                                response_id,
+                                model,
+                                int(meta["index"]),
+                                str(meta["call_id"]),
+                                str(meta["name"]),
+                                arguments,
+                                is_first=False,
+                            )
+                            yield f"data: {orjson.dumps(chunk).decode()}\n\n"
+                        tool_calls_started = True
+                        continue
 
             ev = adapter.feed(event_type, data)
             if ev is None:
@@ -397,14 +567,29 @@ async def _console_stream_completions(
         # Keep Chat Completions streaming chunks strict for clients such as
         # LobeChat. Citation URLs are already streamed as text by console.x.ai;
         # do not add non-standard root search_sources or delta.annotations.
+        pt = estimate_prompt_tokens(str(messages))
+        ct = estimate_tokens(full_text)
+        rt = estimate_tokens("".join(think_buf)) if think_buf else 0
+        if tool_calls_started:
+            arg_text = "".join("".join(parts) for parts in tool_call_args.values())
+            final_chunk = make_tool_call_done_chunk(
+                response_id,
+                model,
+                usage=build_usage(
+                    pt,
+                    ct + estimate_tokens(arg_text),
+                    reasoning_tokens=rt,
+                ),
+            )
+            yield f"data: {orjson.dumps(final_chunk).decode()}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
         final_chunk = make_stream_chunk(
             response_id, model, "",
             is_final=True,
             finish_reason="stop",
         )
-        pt = estimate_prompt_tokens(str(messages))
-        ct = estimate_tokens(full_text)
-        rt = estimate_tokens("".join(think_buf)) if think_buf else 0
         final_chunk["usage"] = build_usage(pt, ct + rt, reasoning_tokens=rt)
         yield f"data: {orjson.dumps(final_chunk).decode()}\n\n"
         yield "data: [DONE]\n\n"
