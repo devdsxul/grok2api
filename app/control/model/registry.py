@@ -41,6 +41,9 @@ MODELS: tuple[ModelSpec, ...] = (
     # mode_id 统一用 FAST（仅用于池配额检查，上游 console.x.ai 直接接受 model name）
     ModelSpec("grok-4",                                 ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4",               console_model=True, upstream_model_name="grok-4"),
     ModelSpec("grok-4.3",                               ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.3",             console_model=True, upstream_model_name="grok-4.3"),
+    ModelSpec("grok-4.3-low",                           ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.3 Low",        console_model=True, upstream_model_name="grok-4.3"),
+    ModelSpec("grok-4.3-medium",                        ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.3 Medium",     console_model=True, upstream_model_name="grok-4.3"),
+    ModelSpec("grok-4.3-high",                          ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.3 High",       console_model=True, upstream_model_name="grok-4.3"),
     ModelSpec("grok-4.20",                              ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20",            console_model=True, upstream_model_name="grok-4.20"),
     ModelSpec("grok-4.20-reasoning",                    ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Reasoning",  console_model=True, upstream_model_name="grok-4.20-reasoning"),
     ModelSpec("grok-4.20-non-reasoning",                ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Non-Reasoning", console_model=True, upstream_model_name="grok-4.20-non-reasoning"),
