@@ -32,7 +32,9 @@ from app.dataplane.reverse.protocol.xai_console import (
     ConsoleStreamAdapter,
     messages_to_console_input,
     extract_instructions,
-    auto_inject_web_search,
+    convert_openai_tools_to_console,
+    convert_openai_tool_choice,
+    inject_web_search_tool,
 )
 from ._format import (
     make_response_id,
@@ -225,8 +227,10 @@ async def _console_completions(
     """
     instructions = extract_instructions(messages)
     input_data = messages_to_console_input(messages)
-    resolved_tools = auto_inject_web_search(tools)
-    include = ["reasoning.encrypted_content"] if emit_think else None
+    # Convert tools to console format (flatten nested function) and inject web_search
+    converted_tools = convert_openai_tools_to_console(tools)
+    resolved_tools = inject_web_search_tool(converted_tools)
+    converted_tool_choice = convert_openai_tool_choice(tool_choice)
 
     # Only send reasoning.effort when explicitly provided by the caller.
     # Some console models (grok-4.20-reasoning etc.) reject the parameter.
@@ -242,13 +246,12 @@ async def _console_completions(
         input_data=input_data,
         instructions=instructions,
         tools=resolved_tools,
-        tool_choice=None if tool_choice is None else tool_choice,
+        tool_choice=converted_tool_choice,
         stream=stream if stream is not None else True,
         temperature=temperature,
         top_p=top_p,
         max_output_tokens=1000000,
         reasoning=reasoning,
-        include=include,
     )
 
     if stream:
@@ -435,29 +438,28 @@ async def _console_responses_dispatch(
     else:
         input_data = input_val
 
-    resolved_tools = auto_inject_web_search(tools)
+    # Convert tools to console format and inject web_search
+    converted_tools = convert_openai_tools_to_console(tools)
+    resolved_tools = inject_web_search_tool(converted_tools)
+    converted_tool_choice = convert_openai_tool_choice(tool_choice)
 
     reasoning: dict | None = None
     if reasoning_effort_level in ("low", "medium", "high"):
         reasoning = {"effort": reasoning_effort_level}
-        include = ["reasoning.encrypted_content"]
     elif emit_think:
-        include = ["reasoning.encrypted_content"]
-    else:
-        include = None
+        reasoning = {"effort": "high"}
 
     payload = build_console_payload(
         model=upstream_model,
         input_data=input_data,
         instructions=instructions,
         tools=resolved_tools,
-        tool_choice=None if tool_choice is None else tool_choice,
+        tool_choice=converted_tool_choice,
         stream=stream,
         temperature=temperature,
         top_p=top_p,
         max_output_tokens=1000000,
         reasoning=reasoning,
-        include=include,
     )
 
     if stream:

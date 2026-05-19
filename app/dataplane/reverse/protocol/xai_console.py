@@ -413,20 +413,59 @@ def _normalize_content_parts(parts: list[dict]) -> list[dict]:
     return result
 
 
-def auto_inject_web_search(tools: list[dict] | None) -> list[dict]:
-    """Auto-inject web_search tool if not already present."""
-    if tools is None:
-        tools = []
+def convert_openai_tools_to_console(tools: list[dict] | None) -> list[dict]:
+    """Convert OpenAI Chat Completions tools -> console (Responses API) tools.
 
-    has_web_search = any(
-        t.get("name") == "web_search"
-        or t.get("type") == "web_search"
-        or (isinstance(t, dict) and t.get("function", {}).get("name") == "web_search")
-        for t in tools
-    )
-    if not has_web_search:
-        tools = list(tools) + [{"type": "web_search"}]
-    return tools
+    OpenAI Chat:  {"type": "function", "function": {"name", "description", "parameters"}}
+    Console API:  {"type": "function", "name", "description", "parameters"}
+    Non-function tools (web_search etc.) pass through unchanged.
+    """
+    if not tools:
+        return []
+    out: list[dict] = []
+    for t in tools:
+        if not isinstance(t, dict):
+            continue
+        if t.get("type") != "function":
+            out.append(dict(t))
+            continue
+        fn = t.get("function") if isinstance(t.get("function"), dict) else None
+        if fn:
+            out.append({
+                "type": "function",
+                "name": fn.get("name") or "",
+                "description": fn.get("description") or "",
+                "parameters": fn.get("parameters") or {},
+            })
+        else:
+            out.append(dict(t))
+    return out
+
+
+def convert_openai_tool_choice(tool_choice: Any) -> Any:
+    """Convert OpenAI tool_choice -> console tool_choice.
+
+    OpenAI:  "none" | "auto" | "required" | {"type":"function","function":{"name":"x"}}
+    Console: "none" | "auto" | "required" | {"type":"function","name":"x"}
+    """
+    if isinstance(tool_choice, str):
+        return tool_choice
+    if isinstance(tool_choice, dict) and tool_choice.get("type") == "function":
+        fn = tool_choice.get("function") if isinstance(tool_choice.get("function"), dict) else None
+        if fn:
+            return {"type": "function", "name": fn.get("name") or ""}
+        return dict(tool_choice)
+    return tool_choice
+
+
+def inject_web_search_tool(tools: list[dict] | None) -> list[dict]:
+    """Ensure a web_search tool is present in the tools list."""
+    existing = list(tools or [])
+    for t in existing:
+        if isinstance(t, dict) and t.get("type") == "web_search":
+            return existing
+    existing.append({"type": "web_search"})
+    return existing
 
 
 __all__ = [
@@ -437,5 +476,7 @@ __all__ = [
     "ConsoleStreamAdapter",
     "messages_to_console_input",
     "extract_instructions",
-    "auto_inject_web_search",
+    "convert_openai_tools_to_console",
+    "convert_openai_tool_choice",
+    "inject_web_search_tool",
 ]
