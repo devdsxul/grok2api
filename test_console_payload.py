@@ -21,7 +21,6 @@ import sys
 
 # Use curl_cffi (already installed in container) for proper TLS fingerprint + proxy
 from curl_cffi import requests
-from curl_cffi.const import CurlOpt
 
 # ---- Build the exact same payload as the app ----
 
@@ -179,12 +178,10 @@ if proxy_url:
     print(f"    Proxy: {proxy_url}")
 
 try:
-    session = requests.Session()
-    # Set curl options for browser impersonation
-    session.set_headers(headers)
-    resp = session.post(
+    resp = requests.post(
         url,
         data=json.dumps(payload),
+        headers=headers,
         impersonate="chrome148",
         timeout=30,
         **session_kwargs,
