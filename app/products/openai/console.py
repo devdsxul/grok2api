@@ -375,7 +375,7 @@ async def _console_stream_completions(
         ct = estimate_tokens(full_text)
         rt = estimate_tokens("".join(think_buf)) if think_buf else 0
         final_chunk["usage"] = build_usage(pt, ct + rt, reasoning_tokens=rt)
-        yield orjson.dumps(final_chunk).decode() + "\n\n"
+        yield f"data: {orjson.dumps(final_chunk).decode()}\n\n"
         yield "data: [DONE]\n\n"
 
     except UpstreamError:
