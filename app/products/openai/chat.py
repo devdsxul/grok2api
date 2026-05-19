@@ -501,12 +501,14 @@ async def completions(
                 #   grok-4.3 + high  → grok-4.3-high
                 upstream = spec.upstream_model_name or spec.model_name
                 effort = reasoning_effort_level
+                response_model = model
                 if spec.model_name == "grok-4.3" and effort in ("low", "medium", "high"):
                     upstream = f"grok-4.3-{effort}"
+                    response_model = upstream
                     effort = None  # encoded in model name, don't send as reasoning.effort
                 result = await _cc(
                     token=token,
-                    model=model,
+                    model=response_model,
                     upstream_model=upstream,
                     messages=messages,
                     stream=is_stream,
