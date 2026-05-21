@@ -75,6 +75,17 @@ def _log_task_exception(task: asyncio.Task) -> None:
         logger.warning("bg task failed: task={} error={}", task.get_name(), exc)
 
 
+_DEFAULT_AGENT_COUNT_BY_CONSOLE_MODEL = {
+    "grok-4.20-multi-agent-0309": 16,
+}
+
+
+def _resolve_agent_count(upstream_model: str, agent_count: int | None) -> int | None:
+    if agent_count is not None:
+        return agent_count
+    return _DEFAULT_AGENT_COUNT_BY_CONSOLE_MODEL.get(upstream_model)
+
+
 def _console_function_calls_from_output(output: list[dict]) -> list[ParsedToolCall]:
     """Convert console Responses API function_call items to Chat tool_calls."""
     calls: list[ParsedToolCall] = []
@@ -328,7 +339,7 @@ async def _console_completions(
         temperature=temperature,
         top_p=top_p,
         reasoning=reasoning,
-        agent_count=agent_count,
+        agent_count=_resolve_agent_count(upstream_model, agent_count),
     )
 
     if stream:
@@ -701,7 +712,7 @@ async def _console_responses_dispatch(
         temperature=temperature,
         top_p=top_p,
         reasoning=reasoning,
-        agent_count=agent_count,
+        agent_count=_resolve_agent_count(upstream_model, agent_count),
     )
 
     if stream:
