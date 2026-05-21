@@ -458,6 +458,7 @@ async def completions(
     temperature: float = 0.8,
     top_p: float = 0.95,
     request_overrides: dict | None = None,
+    agent_count: int | None = None,
 ) -> dict | AsyncGenerator[str, None]:
     """Entry point for /v1/chat/completions.
 
@@ -525,6 +526,7 @@ async def completions(
                             tool_choice=tool_choice,
                             temperature=temperature,
                             top_p=top_p,
+                            agent_count=agent_count,
                             timeout_s=timeout_s,
                         )
                         async for chunk in result:
@@ -605,6 +607,7 @@ async def completions(
                     tool_choice=tool_choice,
                     temperature=temperature,
                     top_p=top_p,
+                    agent_count=agent_count,
                     timeout_s=timeout_s,
                 )
                 success = True

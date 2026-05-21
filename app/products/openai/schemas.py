@@ -39,6 +39,7 @@ class ChatCompletionRequest(BaseModel):
     tool_choice:         str | dict[str, Any] | None = None
     parallel_tool_calls: bool | None                = True
     max_tokens:          int | None                 = None
+    agent_count:         int | None                 = None
 
 
 class ImageGenerationRequest(BaseModel):
@@ -83,6 +84,7 @@ class ResponsesCreateRequest(BaseModel):
     parallel_tool_calls:  bool | None           = None
     include:              list[str] | None      = None
     background:           bool | None           = None
+    agent_count:          int | None            = None
 
     class Config:
         extra = "ignore"

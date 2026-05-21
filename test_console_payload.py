@@ -36,6 +36,7 @@ def build_console_payload(
     top_p: float | None = None,
     max_output_tokens: int | None = None,
     reasoning: dict | None = None,
+    agent_count: int | None = None,
 ) -> dict:
     payload: dict = {"model": model, "input": input_data}
     if stream:
@@ -50,6 +51,8 @@ def build_console_payload(
         payload["max_output_tokens"] = max_output_tokens
     if reasoning:
         payload["reasoning"] = reasoning
+    if agent_count is not None:
+        payload["agent_count"] = agent_count
     if tools:
         payload["tools"] = tools
         if tool_choice is not None:
@@ -114,6 +117,7 @@ if not sso_token:
 model = args.get("model", "grok-4.3")
 effort = args.get("effort")
 test_with_tools = args.get("tools", "0") == "1"
+agent_count = int(args["agent_count"]) if args.get("agent_count") else None
 
 # ---- Construct payload ----
 input_data = [
@@ -154,6 +158,7 @@ payload = build_console_payload(
     temperature=0.8,
     top_p=0.95,
     reasoning=reasoning,
+    agent_count=agent_count,
 )
 
 # ---- Print what we're sending ----

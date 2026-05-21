@@ -293,6 +293,7 @@ async def _console_completions(
     tool_choice: Any = None,
     temperature: float = 0.8,
     top_p: float = 0.95,
+    agent_count: int | None = None,
     timeout_s: float = 120.0,
 ) -> dict | AsyncGenerator[str, None]:
     """Chat Completions through console.x.ai/v1/responses.
@@ -327,6 +328,7 @@ async def _console_completions(
         temperature=temperature,
         top_p=top_p,
         reasoning=reasoning,
+        agent_count=agent_count,
     )
 
     if stream:
@@ -659,6 +661,7 @@ async def _console_responses_dispatch(
     top_p: float,
     tools: list[dict] | None = None,
     tool_choice: Any = None,
+    agent_count: int | None = None,
     timeout_s: float = 120.0,
 ) -> dict | AsyncGenerator[str, None]:
     """Transparent proxy: Responses API → console.x.ai/v1/responses.
@@ -698,6 +701,7 @@ async def _console_responses_dispatch(
         temperature=temperature,
         top_p=top_p,
         reasoning=reasoning,
+        agent_count=agent_count,
     )
 
     if stream:

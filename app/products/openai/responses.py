@@ -218,6 +218,7 @@ async def create(
     top_p:        float,
     tools:        list[dict] | None = None,
     tool_choice:  Any = None,
+    agent_count:  int | None = None,
 ) -> dict | AsyncGenerator[str, None]:
 
     cfg     = get_config()
@@ -277,6 +278,7 @@ async def create(
                             top_p=top_p,
                             tools=tools,
                             tool_choice=tool_choice,
+                            agent_count=agent_count,
                             timeout_s=timeout_s,
                         )
                         async for chunk in result:
@@ -359,6 +361,7 @@ async def create(
                     top_p=top_p,
                     tools=tools,
                     tool_choice=tool_choice,
+                    agent_count=agent_count,
                     timeout_s=timeout_s,
                 )
                 success = True

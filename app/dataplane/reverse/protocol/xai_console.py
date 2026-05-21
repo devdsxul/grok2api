@@ -29,6 +29,7 @@ def build_console_payload(
     top_p: float | None = None,
     max_output_tokens: int | None = None,
     reasoning: dict | None = None,
+    agent_count: int | None = None,
 ) -> dict[str, Any]:
     """Build a JSON payload for POST console.x.ai/v1/responses.
 
@@ -51,6 +52,8 @@ def build_console_payload(
         payload["max_output_tokens"] = max_output_tokens
     if reasoning:
         payload["reasoning"] = reasoning
+    if agent_count is not None:
+        payload["agent_count"] = agent_count
     if tools:
         payload["tools"] = tools
         if tool_choice is not None:
