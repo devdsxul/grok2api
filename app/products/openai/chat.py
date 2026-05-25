@@ -182,9 +182,38 @@ def _configured_retry_codes(cfg) -> frozenset[int]:
     return _parse_retry_codes(raw)
 
 
+def _is_transport_retryable(exc: UpstreamError) -> bool:
+    """判断上游失败是否来自可重试的临时传输错误。"""
+    details = getattr(exc, "details", {})
+    body = ""
+    if isinstance(details, dict):
+        body = str(details.get("body", "") or "")
+    haystack = f"{exc.message} {body}".lower()
+    transport_markers = (
+        "transport request failed",
+        "transport failed",
+        "curl:",
+        "connection reset",
+        "recv failure",
+        "timeout",
+        "timed out",
+        "could not connect",
+        "failed to connect",
+        "proxy",
+        "tls connect",
+    )
+    return exc.status in (0, 502) and any(
+        marker in haystack for marker in transport_markers
+    )
+
+
 def _should_retry_upstream(exc: UpstreamError, retry_codes: frozenset[int]) -> bool:
     """Return whether this upstream error should switch to another token."""
-    return exc.status in retry_codes or is_invalid_credentials_error(exc)
+    return (
+        exc.status in retry_codes
+        or is_invalid_credentials_error(exc)
+        or _is_transport_retryable(exc)
+    )
 
 
 def _feedback_kind(exc: BaseException) -> "FeedbackKind":
