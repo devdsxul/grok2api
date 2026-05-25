@@ -520,7 +520,7 @@ async def completions(
         # Extract reasoning effort from model name suffix if not explicit.
         # e.g. grok-4.3-low → low, grok-4.3-medium → medium
         if effort is None:
-            for suffix in ("-low", "-medium", "-high"):
+            for suffix in ("-low", "-medium", "-high", "-xhigh"):
                 if model.endswith(suffix):
                     effort = suffix[1:]
                     break

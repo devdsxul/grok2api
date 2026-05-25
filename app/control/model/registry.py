@@ -48,6 +48,14 @@ MODELS: tuple[ModelSpec, ...] = (
     ModelSpec("grok-4.20-reasoning",                    ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Reasoning",  console_model=True, upstream_model_name="grok-4.20-reasoning"),
     ModelSpec("grok-4.20-non-reasoning",                ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Non-Reasoning", console_model=True, upstream_model_name="grok-4.20-non-reasoning"),
     ModelSpec("grok-4.20-multi-agent",                  ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Multi-Agent", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.20-multi-agent-low",              ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Multi-Agent Low", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.20-multi-agent-medium",           ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Multi-Agent Medium", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.20-multi-agent-high",             ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Multi-Agent High", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.20-multi-agent-xhigh",            ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.20 Multi-Agent XHigh", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.2-multi-agent-low",               ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.2 Multi-Agent Low",  console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.2-multi-agent-medium",            ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.2 Multi-Agent Medium", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.2-multi-agent-high",              ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.2 Multi-Agent High", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
+    ModelSpec("grok-4.2-multi-agent-xhigh",             ModeId.FAST,     Tier.BASIC, Capability.CHAT,       True, "Grok 4.2 Multi-Agent XHigh", console_model=True, upstream_model_name="grok-4.20-multi-agent-0309"),
 
     # === Image ==============================================================
 

@@ -315,7 +315,7 @@ async def _console_completions(
     # Some console models (grok-4.20-reasoning etc.) reject the parameter.
     # NOTE: do NOT send {"effort": "none"} — the API rejects it as invalid.
     reasoning: dict | None = None
-    if reasoning_effort_level in ("low", "medium", "high"):
+    if reasoning_effort_level in ("low", "medium", "high", "xhigh"):
         reasoning = {"effort": reasoning_effort_level}
 
     payload = build_console_payload(
@@ -686,7 +686,7 @@ async def _console_responses_dispatch(
     resolved_tools = inject_web_search_tool(converted_tools)
 
     reasoning: dict | None = None
-    if reasoning_effort_level in ("low", "medium", "high"):
+    if reasoning_effort_level in ("low", "medium", "high", "xhigh"):
         reasoning = {"effort": reasoning_effort_level}
     elif emit_think:
         reasoning = {"effort": "high"}
@@ -811,10 +811,10 @@ async def _console_responses_stream(
 def _resolve_reasoning_effort(emit_think: bool | None, effort_level: str | None = None) -> str | None:
     """Map emit_think flag to reasoning.effort value.
 
-    If *effort_level* is provided (one of "low", "medium", "high"), use it directly
+    If *effort_level* is provided (one of "low", "medium", "high", "xhigh"), use it directly
     when thinking is enabled. Otherwise fall back to "high"/"none".
     """
-    if effort_level in ("low", "medium", "high"):
+    if effort_level in ("low", "medium", "high", "xhigh"):
         return effort_level
     if emit_think is True:
         return "high"

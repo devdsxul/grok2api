@@ -241,7 +241,7 @@ async def create(
         effort = reasoning_effort_level
         # Extract reasoning effort from model name suffix if not explicit.
         if effort is None:
-            for suffix in ("-low", "-medium", "-high"):
+            for suffix in ("-low", "-medium", "-high", "-xhigh"):
                 if model.endswith(suffix):
                     effort = suffix[1:]
                     break
